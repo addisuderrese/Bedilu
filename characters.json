@@ -1,0 +1,47 @@
+[
+    {
+        "name": "Sherlock Holmes",
+        "attributes": {
+            "real": "no",
+            "detective": "yes",
+            "male": "yes",
+            "superhero": "no"
+        }
+    },
+    {
+        "name": "Albert Einstein",
+        "attributes": {
+            "real": "yes",
+            "detective": "no",
+            "male": "yes",
+            "superhero": "no"
+        }
+    },
+    {
+        "name": "Wonder Woman",
+        "attributes": {
+            "real": "no",
+            "detective": "no",
+            "male": "no",
+            "superhero": "yes"
+        }
+    },
+    {
+        "name": "Harry Potter",
+        "attributes": {
+            "real": "no",
+            "detective": "no",
+            "male": "yes",
+            "superhero": "no"
+        }
+    },
+    {
+        "name": "Marie Curie",
+        "attributes": {
+            "real": "yes",
+            "detective": "no",
+            "male": "no",
+            "superhero": "no"
+        }
+    }
+]
