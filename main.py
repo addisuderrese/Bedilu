@@ -1,119 +1,160 @@
+import os
 import json
 import logging
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from aiogram.utils import executor
-from aiogram.contrib.middlewares.logging import LoggingMiddleware
+from aiogram.filters import CommandStart
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.context import FSMContext
 
-API_TOKEN = "7939460560:AAEqdNygqbB9hlSJFvH3R8qd4c7yhrg1Ua0"  # Replace with your bot token
-
-# Configure logging
+# Set up logging
 logging.basicConfig(level=logging.INFO)
 
-# Initialize bot and dispatcher
-bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot)
-dp.middleware.setup(LoggingMiddleware())
+# Environment variable for the bot token
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 
-# Load characters database from JSON
-with open("characters.json", "r") as f:
-    CHARACTERS = json.load(f)
+# Initialize bot, dispatcher, and memory storage
+bot = Bot(token=BOT_TOKEN)
+storage = MemoryStorage()
+dp = Dispatcher(storage=storage)
 
-# Extract all possible questions (attributes)
-ALL_QUESTIONS = set()
-for char in CHARACTERS:
-    ALL_QUESTIONS.update(char["attributes"].keys())
+# --- Game Logic ---
 
-# In-memory storage of user sessions
-sessions = {}
+def load_characters():
+    """Loads the character database from the JSON file."""
+    try:
+        with open('characters.json', 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        logging.error("characters.json not found.")
+        return []
+    except json.JSONDecodeError:
+        logging.error("Error decoding characters.json.")
+        return []
 
-# Start command handler
-@dp.message_handler(commands=["start"])
-async def start_game(message: types.Message):
-    user_id = message.from_user.id
-    # Initialize session
-    sessions[user_id] = {
-        "possible_characters": CHARACTERS.copy(),
-        "answered_questions": {}
-    }
-    await message.answer(
-        "Think of a character. I will try to guess it by asking yes/no/maybe questions."
-    )
-    await ask_next_question(user_id, message)
+def get_next_question(remaining_characters):
+    """
+    Determines the best next question to ask by finding the attribute
+    that splits the remaining characters most evenly.
+    """
+    question_counts = {}
+    for character in remaining_characters:
+        for attribute, value in character["attributes"].items():
+            if attribute not in question_counts:
+                question_counts[attribute] = {}
+            if value not in question_counts[attribute]:
+                question_counts[attribute][value] = 0
+            question_counts[attribute][value] += 1
 
-
-async def ask_next_question(user_id, message_or_callback):
-    session = sessions[user_id]
-    unanswered = ALL_QUESTIONS - set(session["answered_questions"].keys())
-
-    if not session["possible_characters"]:
-        await message_or_callback.answer("I give up! 🤷‍♂️")
-        sessions.pop(user_id, None)
-        return
-
-    if len(session["possible_characters"]) == 1:
-        name = session["possible_characters"][0]["name"]
-        await message_or_callback.answer(f"Is it... **{name}**? 🎉", parse_mode="Markdown")
-        sessions.pop(user_id, None)
-        return
-
-    if not unanswered:
-        await message_or_callback.answer("I don't have any more questions! I give up.")
-        sessions.pop(user_id, None)
-        return
-
-    # Pick the question that splits the remaining characters most evenly
     best_question = None
-    best_diff = len(session["possible_characters"])
-    for question in unanswered:
-        yes_count = sum(
-            1 for c in session["possible_characters"] if c["attributes"].get(question) == "yes"
-        )
-        no_count = sum(
-            1 for c in session["possible_characters"] if c["attributes"].get(question) == "no"
-        )
-        maybe_count = sum(
-            1 for c in session["possible_characters"] if c["attributes"].get(question) == "maybe"
-        )
-        # Calculate how balanced the split is
-        counts = [yes_count, no_count, maybe_count]
-        diff = max(counts) - min(counts)
-        if diff < best_diff:
-            best_diff = diff
-            best_question = question
+    min_difference = float('inf')
 
-    # Send question with inline buttons
-    buttons = [
-        InlineKeyboardButton("Yes", callback_data=f"{best_question}:yes"),
-        InlineKeyboardButton("No", callback_data=f"{best_question}:no"),
-        InlineKeyboardButton("Maybe", callback_data=f"{best_question}:maybe"),
-    ]
-    keyboard = InlineKeyboardMarkup().add(*buttons)
-    await message_or_callback.answer(f"Is your character: **{best_question.replace('_', ' ')}?**", parse_mode="Markdown", reply_markup=keyboard)
+    for attribute, values in question_counts.items():
+        if len(values) > 1:
+            counts = list(values.values())
+            difference = max(counts) - min(counts)
+            if difference < min_difference:
+                min_difference = difference
+                best_question = attribute
+
+    return best_question
 
 
-@dp.callback_query_handler(lambda c: ":" in c.data)
-async def handle_answer(callback_query: types.CallbackQuery):
-    user_id = callback_query.from_user.id
-    if user_id not in sessions:
-        await callback_query.answer("Please start a new game with /start")
+# --- Handlers ---
+
+@dp.message(CommandStart())
+async def send_welcome(message: types.Message, state: FSMContext):
+    """
+    Handles the /start command.
+    Initializes the game state and asks the first question.
+    """
+    await state.update_data(
+        remaining_characters=load_characters(),
+        asked_questions=set()
+    )
+    await message.answer("Think of a character, and I will try to guess who it is! I will ask you a series of yes/no questions.")
+    await ask_question(message.chat.id, state)
+
+async def ask_question(chat_id: int, state: FSMContext):
+    """
+    Asks the next logical question or makes a guess.
+    """
+    data = await state.get_data()
+    remaining_characters = data.get("remaining_characters", [])
+    asked_questions = data.get("asked_questions", set())
+
+    if not remaining_characters:
+        await bot.send_message(chat_id, "I give up! I couldn't figure out your character.")
+        await state.clear()
         return
 
-    data = callback_query.data
-    question, answer = data.split(":")
-    session = sessions[user_id]
-    session["answered_questions"][question] = answer
+    if len(remaining_characters) == 1:
+        guess = remaining_characters[0]["name"]
+        await bot.send_message(chat_id, f"I think your character is {guess}!")
+        await state.clear()
+        return
 
-    # Filter characters
-    filtered = []
-    for char in session["possible_characters"]:
-        char_answer = char["attributes"].get(question)
-        if char_answer == answer:
-            filtered.append(char)
-    session["possible_characters"] = filtered
+    next_question_attribute = get_next_question(remaining_characters)
 
-    await ask_next_question(user_id, callback_query)
+    if not next_question_attribute or next_question_attribute in asked_questions:
+        await bot.send_message(chat_id, "I'm running out of questions... I give up!")
+        await state.clear()
+        return
+
+    asked_questions.add(next_question_attribute)
+    await state.update_data(asked_questions=asked_questions, current_question=next_question_attribute)
+
+    # For simplicity, we'll ask about the most common value for the attribute
+    # A more advanced version could present all possible values.
+    possible_values = list(set(c["attributes"].get(next_question_attribute) for c in remaining_characters if next_question_attribute in c["attributes"]))
+
+    # We will formulate the question around the first possible value.
+    # This works best for boolean-like attributes.
+    question_text = f"Is your character {next_question_attribute.replace('_', ' ')}: {possible_values[0]}?"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Yes", callback_data=f"yes:{possible_values[0]}")],
+        [InlineKeyboardButton(text="No", callback_data=f"no:{possible_values[0]}")],
+        [InlineKeyboardButton(text="Maybe", callback_data="maybe")]
+    ])
+    await bot.send_message(chat_id, question_text, reply_markup=keyboard)
 
 
-if __name__ == "__main__":
-    executor.start_polling(dp, skip_updates=True)
+@dp.callback_query()
+async def process_callback(callback_query: types.CallbackQuery, state: FSMContext):
+    """
+    Processes the user's answer from the inline keyboard.
+    """
+    answer, value = callback_query.data.split(":", 1) if ":" in callback_query.data else (callback_query.data, None)
+
+    data = await state.get_data()
+    remaining_characters = data.get("remaining_characters", [])
+    current_question = data.get("current_question")
+
+    if answer == "yes":
+        remaining_characters = [
+            char for char in remaining_characters
+            if char["attributes"].get(current_question) == value
+        ]
+    elif answer == "no":
+        remaining_characters = [
+            char for char in remaining_characters
+            if char["attributes"].get(current_question) != value
+        ]
+    # "Maybe" answer doesn't filter the list for this simple implementation
+
+    await state.update_data(remaining_characters=remaining_characters)
+    await callback_query.message.delete()
+    await ask_question(callback_query.from_user.id, state)
+
+
+async def main():
+    """Starts the bot."""
+    if not BOT_TOKEN:
+        logging.critical("No BOT_TOKEN found. Please set the TELEGRAM_BOT_TOKEN environment variable.")
+        return
+    await dp.start_polling(bot)
+
+if __name__ == '__main__':
+    import asyncio
+    asyncio.run(main())

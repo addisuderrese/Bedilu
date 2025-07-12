@@ -1,47 +1,52 @@
 [
-    {
-        "name": "Sherlock Holmes",
-        "attributes": {
-            "real": "no",
-            "detective": "yes",
-            "male": "yes",
-            "superhero": "no"
-        }
-    },
-    {
-        "name": "Albert Einstein",
-        "attributes": {
-            "real": "yes",
-            "detective": "no",
-            "male": "yes",
-            "superhero": "no"
-        }
-    },
-    {
-        "name": "Wonder Woman",
-        "attributes": {
-            "real": "no",
-            "detective": "no",
-            "male": "no",
-            "superhero": "yes"
-        }
-    },
-    {
-        "name": "Harry Potter",
-        "attributes": {
-            "real": "no",
-            "detective": "no",
-            "male": "yes",
-            "superhero": "no"
-        }
-    },
-    {
-        "name": "Marie Curie",
-        "attributes": {
-            "real": "yes",
-            "detective": "no",
-            "male": "no",
-            "superhero": "no"
-        }
+  {
+    "name": "Harry Potter",
+    "attributes": {
+      "real_or_fictional": "fictional",
+      "gender": "male",
+      "species": "human",
+      "profession": "student",
+      "is_magic": "yes"
     }
+  },
+  {
+    "name": "Sherlock Holmes",
+    "attributes": {
+      "real_or_fictional": "fictional",
+      "gender": "male",
+      "species": "human",
+      "profession": "detective",
+      "is_magic": "no"
+    }
+  },
+  {
+    "name": "Wonder Woman",
+    "attributes": {
+      "real_or_fictional": "fictional",
+      "gender": "female",
+      "species": "amazonian",
+      "profession": "superhero",
+      "is_magic": "yes"
+    }
+  },
+  {
+    "name": "Albert Einstein",
+    "attributes": {
+      "real_or_fictional": "real",
+      "gender": "male",
+      "species": "human",
+      "profession": "scientist",
+      "is_magic": "no"
+    }
+  },
+  {
+    "name": "Darth Vader",
+    "attributes": {
+      "real_or_fictional": "fictional",
+      "gender": "male",
+      "species": "human",
+      "profession": "sith lord",
+      "is_magic": "yes"
+    }
+  }
 ]
